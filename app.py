@@ -51,7 +51,10 @@ try:
     periodo = st.sidebar.date_input("Período:", [df_total['data'].min().date(), df_total['data'].max().date()])
     tier_sel = st.sidebar.multiselect("Tier:", df_total['tier'].unique(), default=df_total['tier'].unique())
     canal_sel = st.sidebar.multiselect("Canais:", df_total['mktchannel'].unique(), default=df_total['mktchannel'].unique())
-
+    # NOTA DE ATUALIZAÇÃO
+    st.sidebar.divider()
+    st.sidebar.markdown("📅 **Status dos Dados:**")
+    st.sidebar.caption("Atualizado com base em **infoleads** e **investimento agências** em 02/01/2026")
     df_f = df_total.copy()
     if isinstance(periodo, list) and len(periodo) == 2:
         df_f = df_f[(df_f['data'].dt.date >= periodo[0]) & (df_f['data'].dt.date <= periodo[1])]
