@@ -40,76 +40,89 @@ def carregar_dados():
     df3 = pd.read_csv(URL_T3)
     return pd.concat([limpar(df2, "T2"), limpar(df3, "T3")], ignore_index=True)
 
+# Título e Assinatura Ajustada
 st.title("📊 BI Marketing - Dashboard de Performance")
-st.markdown("##### *Elaborado por Isabelle Malta*")
+st.markdown("<p style='font-size: 14px; color: gray; margin-top: -15px;'>Elaborado por Isabelle Malta</p>", unsafe_allow_html=True)
 
 try:
     df_total = carregar_dados()
 
-    # --- SIDEBAR ---
+    # --- SIDEBAR (FILTROS) ---
     st.sidebar.header("🎯 Filtros")
     
-    # 1. Criar coluna de ano e filtro de seleção
+    # 1. Filtro de Ano
     df_total['ano'] = df_total['data'].dt.year
     anos_disponiveis = sorted(df_total['ano'].unique(), reverse=True)
     ano_selecionado = st.sidebar.selectbox("📅 Selecione o Ano:", anos_disponiveis)
 
-    # 2. Filtrar os dados base pelo ano selecionado para ajustar os outros filtros
+    # Filtrar dados base pelo ano selecionado
     df_ano = df_total[df_total['ano'] == ano_selecionado]
 
-    # 3. Filtro de Período (Calendário) - Agora ele começa limitado ao ano escolhido
+    # 2. Filtro de Mês (Em Português)
+    meses_pt = {
+        1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 
+        5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 
+        9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+    }
+    meses_num = sorted(df_ano['data'].dt.month.unique())
+    opcoes_mes = ["Todos"] + [meses_pt[m] for m in meses_num]
+    mes_selecionado = st.sidebar.selectbox("📆 Selecione o Mês:", opcoes_mes)
+
+    # Lógica de seleção do Mês
+    if mes_selecionado != "Todos":
+        num_mes_sel = [k for k, v in meses_pt.items() if v == mes_selecionado][0]
+        df_base_filtros = df_ano[df_ano['data'].dt.month == num_mes_sel]
+    else:
+        df_base_filtros = df_ano
+
+    # 3. Filtro de Período (Calendário)
     periodo = st.sidebar.date_input(
         "Refinar Período:", 
-        [df_ano['data'].min().date(), df_ano['data'].max().date()]
+        [df_base_filtros['data'].min().date(), df_base_filtros['data'].max().date()]
     )
 
-    # 4. Filtros de Tier e Canais - Mostram apenas o que existe no ano selecionado
-    tier_sel = st.sidebar.multiselect("Tier:", df_ano['tier'].unique(), default=df_ano['tier'].unique())
-    canal_sel = st.sidebar.multiselect("Canais:", df_ano['mktchannel'].unique(), default=df_ano['mktchannel'].unique())
+    # 4. Filtros de Tier e Canais
+    tier_sel = st.sidebar.multiselect("Tier:", df_base_filtros['tier'].unique(), default=df_base_filtros['tier'].unique())
+    canal_sel = st.sidebar.multiselect("Canais:", df_base_filtros['mktchannel'].unique(), default=df_base_filtros['mktchannel'].unique())
 
-    # --- NOTA DE ATUALIZAÇÃO (Mantida conforme solicitado) ---
+    # NOTA DE ATUALIZAÇÃO
     st.sidebar.divider()
     st.sidebar.markdown("📅 **Status dos Dados:**")
     st.sidebar.caption("Atualizado com base em **infoleads** e **investimento agências** em 02/01/2026")
 
     # --- LÓGICA DE FILTRAGEM FINAL ---
-    # Começamos com os dados do ano selecionado
-    df_f = df_ano.copy()
+    df_f = df_base_filtros.copy()
     
-    # Aplicamos o refino do calendário
     if isinstance(periodo, list) and len(periodo) == 2:
         df_f = df_f[(df_f['data'].dt.date >= periodo[0]) & (df_f['data'].dt.date <= periodo[1])]
     
-    # Aplicamos os filtros de Tier e Canal
     df_f = df_f[(df_f['tier'].isin(tier_sel)) & (df_f['mktchannel'].isin(canal_sel))]
 
     if not df_f.empty:
-       # 1. KPIs TOTAIS (Volumes e Médias de Custo)
+        # 1. KPIs TOTAIS (Volumes e Médias)
         inv, lds, hls, vds = df_f['investimento'].sum(), df_f['leads'].sum(), df_f['hotleads'].sum(), df_f['vendas'].sum()
         
         def f_moeda(v): return f"R$ {v:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         def f_qtd(v): return f"{int(v):,}".replace(',', '.')
 
-        # Primeira Linha: Volumes Totais
+        # Linha 1: Volumes
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Investimento Total", f_moeda(inv))
         c2.metric("Total Leads", f_qtd(lds))
         c3.metric("Total Hotleads", f_qtd(hls))
         c4.metric("Total Vendas", f_qtd(vds))
 
-        # --- CÁLCULO DAS MÉDIAS ---
+        # Cálculos de Eficiência
         avg_cpl = inv / lds if lds > 0 else 0
         avg_cphl = inv / hls if hls > 0 else 0
         avg_cpv = inv / vds if vds > 0 else 0
+        tx_conv = (vds / lds) * 100 if lds > 0 else 0
 
-        # Segunda Linha: KPIs de Eficiência (Médias)
+        # Linha 2: Médias e Conversão
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("CPL Médio", f_moeda(avg_cpl))
         m2.metric("CPHL Médio", f_moeda(avg_cphl))
         m3.metric("CPVenda Médio", f_moeda(avg_cpv))
-        
-        # Opcional: Taxa de Conversão de Vendas (Vendas/Leads)
-        tx_conv = (vds / lds) * 100 if lds > 0 else 0
         m4.metric("Taxa de Conv. (Vendas)", f"{tx_conv:.2f}%")
 
         # Funções para os gráficos gigantes
@@ -158,7 +171,6 @@ try:
                     with st.spinner('Consultando Gemini...'):
                         try:
                             model = genai.GenerativeModel('gemini-1.5-flash')
-                            # Enviamos o resumo por canal para ela analisar melhor
                             resumo = df_c[['mktchannel', 'investimento', 'cphl', 'cpv']].to_string()
                             response = model.generate_content(f"Dados:\n{resumo}\n\nPergunta: {pergunta}")
                             st.info(response.text)
@@ -167,5 +179,6 @@ try:
 
 except Exception as e:
     st.error(f"Erro no Dash: {e}")
+
 
 
