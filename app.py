@@ -84,16 +84,33 @@ try:
     df_f = df_f[(df_f['tier'].isin(tier_sel)) & (df_f['mktchannel'].isin(canal_sel))]
 
     if not df_f.empty:
-        # 1. KPIs TOTAIS (Bullets)
+       # 1. KPIs TOTAIS (Volumes e Médias de Custo)
         inv, lds, hls, vds = df_f['investimento'].sum(), df_f['leads'].sum(), df_f['hotleads'].sum(), df_f['vendas'].sum()
+        
         def f_moeda(v): return f"R$ {v:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         def f_qtd(v): return f"{int(v):,}".replace(',', '.')
 
+        # Primeira Linha: Volumes Totais
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Investimento Total", f_moeda(inv))
         c2.metric("Total Leads", f_qtd(lds))
         c3.metric("Total Hotleads", f_qtd(hls))
         c4.metric("Total Vendas", f_qtd(vds))
+
+        # --- CÁLCULO DAS MÉDIAS ---
+        avg_cpl = inv / lds if lds > 0 else 0
+        avg_cphl = inv / hls if hls > 0 else 0
+        avg_cpv = inv / vds if vds > 0 else 0
+
+        # Segunda Linha: KPIs de Eficiência (Médias)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("CPL Médio", f_moeda(avg_cpl))
+        m2.metric("CPHL Médio", f_moeda(avg_cphl))
+        m3.metric("CPVenda Médio", f_moeda(avg_cpv))
+        
+        # Opcional: Taxa de Conversão de Vendas (Vendas/Leads)
+        tx_conv = (vds / lds) * 100 if lds > 0 else 0
+        m4.metric("Taxa de Conv. (Vendas)", f"{tx_conv:.2f}%")
 
         # Funções para os gráficos gigantes
         def plot_g(df, x_col, y, title, cor):
@@ -150,4 +167,5 @@ try:
 
 except Exception as e:
     st.error(f"Erro no Dash: {e}")
+
 
