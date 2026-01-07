@@ -48,16 +48,39 @@ try:
 
     # --- SIDEBAR ---
     st.sidebar.header("🎯 Filtros")
-    periodo = st.sidebar.date_input("Período:", [df_total['data'].min().date(), df_total['data'].max().date()])
-    tier_sel = st.sidebar.multiselect("Tier:", df_total['tier'].unique(), default=df_total['tier'].unique())
-    canal_sel = st.sidebar.multiselect("Canais:", df_total['mktchannel'].unique(), default=df_total['mktchannel'].unique())
-    # NOTA DE ATUALIZAÇÃO
+    
+    # 1. Criar coluna de ano e filtro de seleção
+    df_total['ano'] = df_total['data'].dt.year
+    anos_disponiveis = sorted(df_total['ano'].unique(), reverse=True)
+    ano_selecionado = st.sidebar.selectbox("📅 Selecione o Ano:", anos_disponiveis)
+
+    # 2. Filtrar os dados base pelo ano selecionado para ajustar os outros filtros
+    df_ano = df_total[df_total['ano'] == ano_selecionado]
+
+    # 3. Filtro de Período (Calendário) - Agora ele começa limitado ao ano escolhido
+    periodo = st.sidebar.date_input(
+        "Refinar Período:", 
+        [df_ano['data'].min().date(), df_ano['data'].max().date()]
+    )
+
+    # 4. Filtros de Tier e Canais - Mostram apenas o que existe no ano selecionado
+    tier_sel = st.sidebar.multiselect("Tier:", df_ano['tier'].unique(), default=df_ano['tier'].unique())
+    canal_sel = st.sidebar.multiselect("Canais:", df_ano['mktchannel'].unique(), default=df_ano['mktchannel'].unique())
+
+    # --- NOTA DE ATUALIZAÇÃO (Mantida conforme solicitado) ---
     st.sidebar.divider()
     st.sidebar.markdown("📅 **Status dos Dados:**")
     st.sidebar.caption("Atualizado com base em **infoleads** e **investimento agências** em 02/01/2026")
-    df_f = df_total.copy()
+
+    # --- LÓGICA DE FILTRAGEM FINAL ---
+    # Começamos com os dados do ano selecionado
+    df_f = df_ano.copy()
+    
+    # Aplicamos o refino do calendário
     if isinstance(periodo, list) and len(periodo) == 2:
         df_f = df_f[(df_f['data'].dt.date >= periodo[0]) & (df_f['data'].dt.date <= periodo[1])]
+    
+    # Aplicamos os filtros de Tier e Canal
     df_f = df_f[(df_f['tier'].isin(tier_sel)) & (df_f['mktchannel'].isin(canal_sel))]
 
     if not df_f.empty:
@@ -127,3 +150,4 @@ try:
 
 except Exception as e:
     st.error(f"Erro no Dash: {e}")
+
