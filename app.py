@@ -158,7 +158,8 @@ try:
                         st.info(response.text)
 
 except Exception as e:
-    st.error(f"Erro no Dash: {e}")}")
+    st.error(f"Erro no Dash: {e}")
+
 
 
 
