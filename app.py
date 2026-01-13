@@ -19,8 +19,8 @@ URL_T3 = URL_BASE + "T3"
 # Estilos Visuais
 st.markdown("""
     <style>
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border: 1px solid #f0f2f6; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
-    [data-testid="stMetricValue"] { font-size: 22px; font-weight: bold; color: #1E3A8A; }
+    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 10px; border: 1px solid #f0f2f6; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+    [data-testid="stMetricValue"] { font-size: 24px; font-weight: bold; color: #1E3A8A; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -46,16 +46,16 @@ st.markdown("<p style='font-size: 14px; color: gray; margin-top: -15px;'>Elabora
 try:
     df_total = carregar_dados()
 
-    # --- SIDEBAR (FILTROS) ---
+    # --- SIDEBAR ---
     st.sidebar.header("🎯 Filtros")
     
-    # Filtro de Ano
+    # 1. Filtro de Ano
     df_total['ano'] = df_total['data'].dt.year
     anos_disponiveis = sorted(df_total['ano'].unique(), reverse=True)
     ano_selecionado = st.sidebar.selectbox("📅 Selecione o Ano:", anos_disponiveis)
     df_ano = df_total[df_total['ano'] == ano_selecionado]
 
-    # Filtro de Mês
+    # 2. Filtro de Mês
     meses_pt = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 
                 7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
     meses_num = sorted(df_ano['data'].dt.month.unique())
@@ -64,83 +64,91 @@ try:
 
     if mes_selecionado != "Todos":
         num_mes_sel = [k for k, v in meses_pt.items() if v == mes_selecionado][0]
-        df_base = df_ano[df_ano['data'].dt.month == num_mes_sel]
+        df_base_filtros = df_ano[df_ano['data'].dt.month == num_mes_sel]
     else:
-        df_base = df_ano
+        df_base_filtros = df_ano
 
-    periodo = st.sidebar.date_input("Refinar Período:", [df_base['data'].min().date(), df_base['data'].max().date()])
-    tier_sel = st.sidebar.multiselect("Tier:", df_base['tier'].unique(), default=df_base['tier'].unique())
-    canal_sel = st.sidebar.multiselect("Canais:", df_base['mktchannel'].unique(), default=df_base['mktchannel'].unique())
+    # 3. Filtro de Orgânico (A CHAVE PARA O QUE VOCÊ QUER)
+    considerar_organico = st.sidebar.checkbox("Considerar Orgânico?", value=True)
+
+    # 4. Outros Filtros
+    periodo = st.sidebar.date_input("Refinar Período:", [df_base_filtros['data'].min().date(), df_base_filtros['data'].max().date()])
+    tier_sel = st.sidebar.multiselect("Tier:", df_base_filtros['tier'].unique(), default=df_base_filtros['tier'].unique())
+    canal_sel = st.sidebar.multiselect("Canais:", df_base_filtros['mktchannel'].unique(), default=df_base_filtros['mktchannel'].unique())
 
     st.sidebar.divider()
     st.sidebar.caption("Atualizado em 02/01/2026")
 
-    # Aplicação dos Filtros
-    df_f = df_base.copy()
+    # --- LÓGICA DE FILTRAGEM ---
+    df_f = df_base_filtros.copy()
+    
+    # Se desmarcar o checkbox, removemos o orgânico da base
+    if not considerar_organico:
+        df_f = df_f[~df_f['mktchannel'].str.contains('organi', case=False, na=False)]
+
     if isinstance(periodo, list) and len(periodo) == 2:
         df_f = df_f[(df_f['data'].dt.date >= periodo[0]) & (df_f['data'].dt.date <= periodo[1])]
+    
     df_f = df_f[(df_f['tier'].isin(tier_sel)) & (df_f['mktchannel'].isin(canal_sel))]
 
     if not df_f.empty:
-        # --- CÁLCULOS GERAIS (BLENDADOS) ---
-        inv = df_f['investimento'].sum()
-        lds = df_f['leads'].sum()
-        hls = df_f['hotleads'].sum()
-        vds = df_f['vendas'].sum()
+        # 1. KPIs TOTAIS
+        inv, lds, hls, vds = df_f['investimento'].sum(), df_f['leads'].sum(), df_f['hotleads'].sum(), df_f['vendas'].sum()
         
-        cpl_b = inv / lds if lds > 0 else 0
-        cphl_b = inv / hls if hls > 0 else 0
-        cpv_b = inv / vds if vds > 0 else 0
-
-        # --- CÁLCULOS PAGOS (SEM ORGÂNICO) ---
-        df_pago = df_f[~df_f['mktchannel'].str.contains('organi', case=False, na=False)]
-        lds_p = df_pago['leads'].sum()
-        hls_p = df_pago['hotleads'].sum()
-        vds_p = df_pago['vendas'].sum()
-        
-        cpl_p = inv / lds_p if lds_p > 0 else 0
-        cphl_p = inv / hls_p if hls_p > 0 else 0
-        cpv_p = inv / vds_p if vds_p > 0 else 0
-
         def f_moeda(v): return f"R$ {v:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         def f_qtd(v): return f"{int(v):,}".replace(',', '.')
 
-        # --- EXIBIÇÃO ---
-        st.subheader("🌐 Visão Geral (Blendada)")
+        # Primeira Linha: Volumes
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Investimento Total", f_moeda(inv))
-        c2.metric("CPL Geral", f_moeda(cpl_b))
-        c3.metric("CPHL Geral", f_moeda(cphl_b))
-        c4.metric("CPVenda Geral", f_moeda(cpv_b))
+        c2.metric("Total Leads", f_qtd(lds))
+        c3.metric("Total Hotleads", f_qtd(hls))
+        c4.metric("Total Vendas", f_qtd(vds))
 
-        st.subheader("💰 Eficiência de Mídia (Apenas Paid)")
+        # Segunda Linha: Médias (Calculadas sobre a base filtrada acima)
+        avg_cpl = inv / lds if lds > 0 else 0
+        avg_cphl = inv / hls if hls > 0 else 0
+        avg_cpv = inv / vds if vds > 0 else 0
+        tx_conv = (vds / lds) * 100 if lds > 0 else 0
+
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Leads Pagos", f_qtd(lds_p))
-        m2.metric("CPL Pago", f_moeda(cpl_p))
-        m3.metric("CPHL Pago", f_moeda(cphl_p))
-        m4.metric("CPVenda Pago", f_moeda(cpv_p))
+        m1.metric("CPL Médio", f_moeda(avg_cpl))
+        m2.metric("CPHL Médio", f_moeda(avg_cphl))
+        m3.metric("CPVenda Médio", f_moeda(avg_cpv))
+        m4.metric("Taxa de Conversão", f"{tx_conv:.2f}%")
 
-        # --- GRÁFICOS ---
+        # Funções para os gráficos originais
         def plot_g(df, x_col, y, title, cor):
-            fig = px.bar(df, x=x_col, y=y, title=title, text_auto='.2f', height=450)
+            fig = px.bar(df, x=x_col, y=y, title=title, text_auto='.2f', height=550)
             fig.update_traces(marker_color=cor, textposition='outside', texttemplate='R$ %{y:,.2f}')
             return fig
 
+        # 2. EVOLUÇÃO MENSAL (ORIGINAL)
         st.divider()
-        st.subheader("📉 Evolução de Custos (Total)")
+        st.subheader("📉 Evolução Mensal de Performance")
         df_f['mes_ref'] = df_f['data'].dt.strftime('%m-%b/%y')
         df_m = df_f.groupby('mes_ref').agg({'investimento':'sum', 'leads':'sum', 'hotleads':'sum', 'vendas':'sum'}).reset_index().sort_values('mes_ref')
         df_m['cpl'] = np.where(df_m['leads'] > 0, df_m['investimento'] / df_m['leads'], 0)
-        
-        st.plotly_chart(plot_g(df_m, 'mes_ref', 'cpl', "CPL Blendado por Mês", "#1E3A8A"), use_container_width=True)
+        df_m['cphl'] = np.where(df_m['hotleads'] > 0, df_m['investimento'] / df_m['hotleads'], 0)
+        df_m['cpv'] = np.where(df_m['vendas'] > 0, df_m['investimento'] / df_m['vendas'], 0)
 
+        st.plotly_chart(plot_g(df_m, 'mes_ref', 'cpl', "CPL Total por Mês", "#1E3A8A"), use_container_width=True)
+        st.plotly_chart(plot_g(df_m, 'mes_ref', 'cphl', "CPHL Total por Mês", "#F59E0B"), use_container_width=True)
+        st.plotly_chart(plot_g(df_m, 'mes_ref', 'cpv', "CPVenda Total por Mês", "#10B981"), use_container_width=True)
+
+        # 3. PERFORMANCE POR CANAL (ORIGINAL)
         st.divider()
-        st.subheader("📊 Performance por Canal")
+        st.subheader("📊 Performance por Canal de Marketing")
         df_c = df_f.groupby('mktchannel').agg({'investimento':'sum', 'leads':'sum', 'hotleads':'sum', 'vendas':'sum'}).reset_index()
         df_c['cpl'] = np.where(df_c['leads'] > 0, df_c['investimento'] / df_c['leads'], 0)
-        st.plotly_chart(plot_g(df_c.sort_values('cpl'), 'mktchannel', 'cpl', "CPL por Canal", "#1E3A8A"), use_container_width=True)
+        df_c['cphl'] = np.where(df_c['hotleads'] > 0, df_c['investimento'] / df_c['hotleads'], 0)
+        df_c['cpv'] = np.where(df_c['vendas'] > 0, df_c['investimento'] / df_c['vendas'], 0)
 
-        # 4. FUNIL E IA
+        st.plotly_chart(plot_g(df_c.sort_values('cpl'), 'mktchannel', 'cpl', "CPL por Canal", "#1E3A8A"), use_container_width=True)
+        st.plotly_chart(plot_g(df_c.sort_values('cphl'), 'mktchannel', 'cphl', "CPHL por Canal", "#F59E0B"), use_container_width=True)
+        st.plotly_chart(plot_g(df_c.sort_values('cpv'), 'mktchannel', 'cpv', "CPVenda por Canal", "#10B981"), use_container_width=True)
+
+        # 4. FUNIL E IA (ORIGINAL)
         st.divider()
         cf, ci = st.columns([1, 1])
         with cf:
@@ -149,16 +157,20 @@ try:
         with ci:
             st.subheader("🤖 Analista IA")
             pergunta = st.text_input("Sua dúvida estratégica:")
-            if st.button("Gerar Análise"):
+            if st.button("Gerar Análise IA"):
                 if pergunta:
-                    with st.spinner('Analisando...'):
-                        model = genai.GenerativeModel('gemini-1.5-flash')
-                        resumo = df_c[['mktchannel', 'investimento', 'cpl']].to_string()
-                        response = model.generate_content(f"Dados:\n{resumo}\n\nPergunta: {pergunta}")
-                        st.info(response.text)
+                    with st.spinner('Consultando Gemini...'):
+                        try:
+                            model = genai.GenerativeModel('gemini-1.5-flash')
+                            resumo = df_c[['mktchannel', 'investimento', 'cpl', 'cpv']].to_string()
+                            response = model.generate_content(f"Dados:\n{resumo}\n\nPergunta: {pergunta}")
+                            st.info(response.text)
+                        except:
+                            st.error("Erro na análise da IA.")
 
 except Exception as e:
     st.error(f"Erro no Dash: {e}")
+
 
 
 
