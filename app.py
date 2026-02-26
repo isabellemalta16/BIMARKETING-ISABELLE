@@ -24,7 +24,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def carregar_dados():
     def limpar(df, nome_tier):
         df.columns = df.columns.str.strip().str.lower()
@@ -170,6 +170,7 @@ try:
 
 except Exception as e:
     st.error(f"Erro no Dash: {e}")
+
 
 
 
